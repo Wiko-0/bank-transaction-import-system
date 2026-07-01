@@ -6,27 +6,28 @@ use App\Models\Import;
 use App\Models\Transaction;
 use App\Models\ImportLog;
 use Illuminate\Support\Facades\Validator;
+use Exception;
 
 class TransactionImportService
 {
     /**
-     * Parse the file, validate records, and save them to the database.
+     * Main control method to coordinate file checking, mapping, and database injection.
      */
     public function import($file): Import
     {
         $fileName = $file->getClientOriginalName();
         $extension = strtolower($file->getClientOriginalExtension());
-        $content = file_get_contents($file->getRealPath());
+        $filePath = $file->getRealPath();
 
-        // Match file extension to the correct parser method
+        // Strategic routing to the correct protected parser based on extension configuration
         $records = match ($extension) {
-            'json' => $this->parseJson($content),
-            'xml'  => $this->parseXml($content),
-            'csv'  => $this->parseCsv($file->getRealPath()),
-            default => []
+            'json'  => $this->parseJsonStrategy($filePath),
+            'xml'   => $this->parseXmlStrategy($filePath),
+            'csv'   => $this->parseCsvStrategy($filePath),
+            default => throw new Exception("Unsupported file format exception: {$extension}")
         };
 
-        // Create an initial import record in the database
+        // Initialize the import batch master entity
         $import = Import::create([
             'file_name' => $fileName,
             'total_records' => count($records),
@@ -45,16 +46,16 @@ class TransactionImportService
         $failedCount = 0;
 
         foreach ($records as $record) {
-            // Validate each individual row/record
+            // Apply granular validation constraints per data row
             $validator = Validator::make($record, [
                 'transaction_id'   => 'required|string',
-                'account_number'   => 'required|string|regex:/^[A-Z]{2}[0-9]{12,30}$/', // Standard IBAN regex format
+                'account_number'   => 'required|string|regex:/^[A-Z]{2}[0-9]{12,30}$/',
                 'transaction_date' => 'required|date',
                 'amount'           => 'required|numeric|gt:0',
                 'currency'         => 'required|alpha|size:3',
             ]);
 
-            // If validation fails, log the error and skip to the next row
+            // Operational error logging branch
             if ($validator->fails()) {
                 $failedCount++;
                 ImportLog::create([
@@ -65,7 +66,7 @@ class TransactionImportService
                 continue;
             }
 
-            // If validation passes, save the valid transaction
+            // Successful transactional row persistence injection
             Transaction::create([
                 'import_id'        => $import->id,
                 'transaction_id'   => $record['transaction_id'],
@@ -77,7 +78,7 @@ class TransactionImportService
             $successCount++;
         }
 
-        // Determine the final status of the file import
+        // Evaluate batch processing thresholds for status outcome
         $status = 'failed';
         if ($successCount === count($records)) {
             $status = 'success';
@@ -85,7 +86,7 @@ class TransactionImportService
             $status = 'partial';
         }
 
-        // Update the import record with final counters and status
+        // Persist final metrics data back to the batch header row
         $import->update([
             'successful_records' => $successCount,
             'failed_records' => $failedCount,
@@ -95,30 +96,35 @@ class TransactionImportService
         return $import;
     }
 
-    private function parseJson($content): array
+    /*** Protected Parsing Strategy JSON */
+    protected function parseJsonStrategy(string $path): array
     {
+        $content = file_get_contents($path);
         return json_decode($content, true) ?? [];
     }
 
-    private function parseXml($content): array
+    /*** Protected Parsing Strategy XML*/
+    protected function parseXmlStrategy(string $path): array
     {
+        $content = file_get_contents($path);
         $xml = simplexml_load_string($content);
         if (!$xml) return [];
         
         $result = [];
         foreach ($xml->transaction as $tx) {
             $result[] = [
-                'transaction_id' => (string)$tx->transaction_id,
-                'account_number' => (string)$tx->account_number,
+                'transaction_id'   => (string)$tx->transaction_id,
+                'account_number'   => (string)$tx->account_number,
                 'transaction_date' => (string)$tx->transaction_date,
-                'amount' => (float)$tx->amount,
-                'currency' => (string)$tx->currency,
+                'amount'           => (float)$tx->amount,
+                'currency'         => (string)$tx->currency,
             ];
         }
         return $result;
     }
 
-    private function parseCsv($path): array
+    /*** Protected Parsing Strategy CSV*/
+    protected function parseCsvStrategy(string $path): array
     {
         $result = [];
         if (($handle = fopen($path, "r")) !== FALSE) {
