@@ -5,7 +5,13 @@ namespace App\Services;
 use App\Models\Import;
 use App\Models\Transaction;
 use App\Models\ImportLog;
+use App\Services\Strategies\JsonParseStrategy;
+use App\Services\Strategies\XmlParseStrategy;
+use App\Services\Strategies\CsvParseStrategy;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\DB;
+use Exception;
+
 
 class TransactionImportService
 {
@@ -16,15 +22,15 @@ class TransactionImportService
     {
         $fileName = $file->getClientOriginalName();
         $extension = strtolower($file->getClientOriginalExtension());
-        $content = file_get_contents($file->getRealPath());
-
-        // Match file extension to the correct parser method
-        $records = match ($extension) {
-            'json' => $this->parseJson($content),
-            'xml'  => $this->parseXml($content),
-            'csv'  => $this->parseCsv($file->getRealPath()),
-            default => []
-        };
+        
+        // resolve the correct parsing strategy class using a protected method
+        $strategy = $this->getParserStrategy($extension);
+        
+        // CSV needs a file path
+        $payload = ($extension === 'csv') ? $file->getRealPath() : file_get_contents($file->getRealPath());
+        
+        // Execute the strategy
+        $records = $strategy->parse($payload);
 
         // Create an initial import record in the database
         $import = Import::create([
@@ -45,14 +51,8 @@ class TransactionImportService
         $failedCount = 0;
 
         foreach ($records as $record) {
-            // Validate each individual row/record
-            $validator = Validator::make($record, [
-                'transaction_id'   => 'required|string',
-                'account_number'   => 'required|string|regex:/^[A-Z]{2}[0-9]{12,30}$/', // Standard IBAN regex format
-                'transaction_date' => 'required|date',
-                'amount'           => 'required|numeric|gt:0',
-                'currency'         => 'required|alpha|size:3',
-            ]);
+            // Validate each individual row/record usando rozbitą metodę chronioną
+            $validator = $this->validateRecord($record);
 
             // If validation fails, log the error and skip to the next row
             if ($validator->fails()) {
@@ -95,41 +95,41 @@ class TransactionImportService
         return $import;
     }
 
-    private function parseJson($content): array
+    /**
+     * Strategy Factory
+     */
+    protected function getParserStrategy(string $extension)
     {
-        return json_decode($content, true) ?? [];
+        return match ($extension) {
+            'json'  => new JsonParseStrategy(),
+            'xml'   => new XmlParseStrategy(),
+            'csv'   => new CsvParseStrategy(),
+            default => throw new Exception("Unsupported file extension layout: {$extension}")
+        };
     }
 
-    private function parseXml($content): array
+    /**
+     * Validator
+     */
+    protected function validateRecord(array $record): \Illuminate\Contracts\Validation\Validator
     {
-        $xml = simplexml_load_string($content);
-        if (!$xml) return [];
-        
-        $result = [];
-        foreach ($xml->transaction as $tx) {
-            $result[] = [
-                'transaction_id' => (string)$tx->transaction_id,
-                'account_number' => (string)$tx->account_number,
-                'transaction_date' => (string)$tx->transaction_date,
-                'amount' => (float)$tx->amount,
-                'currency' => (string)$tx->currency,
-            ];
-        }
-        return $result;
+        return Validator::make($record, $this->getTransactionRules());
     }
 
-    private function parseCsv($path): array
+    /**
+     * Protected Validation Rules
+     */
+    protected function getTransactionRules(): array
     {
-        $result = [];
-        if (($handle = fopen($path, "r")) !== FALSE) {
-            $header = fgetcsv($handle, 1000, ",");
-            while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
-                if (count($header) == count($data)) {
-                    $result[] = array_combine($header, $data);
-                }
-            }
-            fclose($handle);
-        }
-        return $result;
+        return [
+            'transaction_id'   => 'required|string',
+            'account_number'   => 'required|string|regex:/^[A-Z]{2}[0-9]{12,30}$/', // Standard IBAN regex format
+            'transaction_date' => 'required|date',
+            'amount'           => 'required|numeric|gt:0',
+            'currency'         => [
+                'required',
+                new \Illuminate\Validation\Rules\Enum(\App\Enums\CurrencyType::class) // użycie Enuma 
+            ],
+        ];
     }
 }

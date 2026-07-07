@@ -3,3 +3,5 @@
 backend/.env
 frontend/.vite/
 frontend/dist/
+/db/
+db/
