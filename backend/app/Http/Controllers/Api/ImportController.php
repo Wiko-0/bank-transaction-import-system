@@ -23,7 +23,10 @@ class ImportController extends Controller
      */
     public function index(): JsonResponse
     {
-        return response()->json(Import::orderBy('created_at', 'desc')->get());
+        //return response()->json(Import::orderBy('created_at', 'desc')->get());
+        $imports = Import::with('logs')->orderBy('created_at', 'desc')->get();
+
+        return response()->json($imports);
     }
 
     /**

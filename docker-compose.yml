@@ -13,6 +13,9 @@ services:
       - ./backend:/var/www/backend
     networks:
       - bank_network
+    environment:
+      - PHP_MEMORY_LIMIT=512M  # limit do 512 MB
+      - PHP_UPLOAD_MAX_FILESIZE=50M
 
   # Nginx Web Server -for Laravel
   nginx:
