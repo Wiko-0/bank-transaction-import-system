@@ -36,6 +36,7 @@ You do not need to install PHP, Node.js, or MySQL on your computer. Everything r
 4. **Run Database Migrations:**
    Create the required tables inside your MySQL database by running:
    ```bash
+   docker compose exec backend composer install
    docker compose exec backend php artisan migrate
    ```
 
