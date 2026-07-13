@@ -20,7 +20,7 @@ class TransactionImportService
         $extension = strtolower($file->getClientOriginalExtension());
         
         $strategy = $this->getParserStrategy($extension);
-        $payload = $file->getRealPath();
+        $payload = is_string($file) ? $file : $file->getRealPath();
         
         $records = $strategy->parse($payload);
 
@@ -35,7 +35,7 @@ class TransactionImportService
         
         $validChunk = [];
         $chunkSize = 1000;
-        $seenInChunk = []; // Zapobiega zakleszczeniom na poziomie bazy danych
+        $seenInChunk = []; // Zapobiega zakleszczeniom na poziomie bazy danych zapisuje id i sprawdza duplikaty
 
         foreach ($records as $record) {
             $validator = $this->validateRecord($record);
