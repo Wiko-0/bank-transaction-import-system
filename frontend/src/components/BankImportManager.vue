@@ -3,7 +3,7 @@
     <h1 class="text-3xl font-black text-black mb-8 uppercase tracking-tight">Bank Transaction Import System</h1>
 
     <div class="bg-white p-6 border-2 border-black rounded-none mb-8">
-      <h2 class="text-xl font-bold mb-4 text-black uppercase">Upload New File</h2>
+      <h2 class="text-xl font-bold mb-4 text-black uppercase">Upload New File-br6</h2>
       <div class="flex items-center gap-4">
         <input 
           type="file" 
@@ -74,7 +74,7 @@ import { ref, onMounted } from 'vue';
 import axios from 'axios';
 import ErrorLogsPanel from './ErrorLogsPanel.vue';
 
-const API_URL = 'http://localhost:8000/api';
+const API_URL = 'http://localhost:80/api';
 const imports = ref([]);
 const selectedImport = ref(null);
 const selectedFile = ref(null);
