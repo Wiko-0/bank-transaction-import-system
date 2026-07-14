@@ -16,7 +16,6 @@ class ProcessTransactionImport implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    // maksymalny limit czasu dla tego zadania 900 sekund
     public $timeout = 900;
 
     protected $importId;
@@ -58,12 +57,12 @@ class ProcessTransactionImport implements ShouldQueue
             $importRecord->file_name,
             null,
             null,
-            true // Tryb testowy (pozwala na manipulację lokalnym plikiem)
+            true
         );
 
         try {
             // Odpala proces strumieniowy z yield i chunkami
-            $importService->import($fakeUploadedFile);
+            $importService->import($fakeUploadedFile, $this->importId);
         } catch (\Throwable $e) {
             // W razie błędu w tle, oznacza import jako failed
             $importRecord->update(['status' => 'failed']);

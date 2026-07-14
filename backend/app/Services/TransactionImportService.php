@@ -14,7 +14,8 @@ use Exception;
 
 class TransactionImportService
 {
-    public function import($file): Import
+
+    public function import($file, ?int $importId = null): Import
     {
         $fileName = $file->getClientOriginalName();
         $extension = strtolower($file->getClientOriginalExtension());
@@ -24,18 +25,25 @@ class TransactionImportService
         
         $records = $strategy->parse($payload);
 
-        $import = Import::create([
-            'file_name' => $fileName,
-            'total_records' => 0,
-            'status' => 'failed'
-        ]);
+        $import = null;
+        if ($importId) {
+            $import = Import::find($importId);
+        }
+
+        if (!$import) {
+            $import = Import::create([
+                'file_name' => $fileName,
+                'total_records' => 0,
+                'status' => 'failed'
+            ]);
+        }
 
         $successCount = 0;
         $failedCount = 0;
         
         $validChunk = [];
         $chunkSize = 1000;
-        $seenInChunk = []; // Zapobiega zakleszczeniom na poziomie bazy danych zapisuje id i sprawdza duplikaty
+        $seenInChunk = [];
 
         foreach ($records as $record) {
             $validator = $this->validateRecord($record);

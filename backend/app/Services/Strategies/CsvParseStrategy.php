@@ -15,14 +15,14 @@ class CsvParseStrategy implements FileParseStrategy
             return [];
         }
 
-        // Pobieramy nagłówki pliku CSV
+        // Pobiera nagłówki pliku CSV
         $headers = fgetcsv($handle, 0, ',');
         if (!$headers) {
             fclose($handle);
             return [];
         }
 
-        // Czyścimy ewentualne ukryte znaki BOM z nagłówków
+        // Czyści ewentualne ukryte znaki BOM z nagłówków
         $headers = array_map(function($header) {
             return trim($header, "\xEF\xBB\xBF ");
         }, $headers);
@@ -33,7 +33,7 @@ class CsvParseStrategy implements FileParseStrategy
                     continue; // Pomijamy uszkodzone wiersze
                 }
 
-                // Łączymy nagłówki z wartościami wiersza
+                // Łączy nagłówki z wartościami wiersza
                 yield array_combine($headers, $row);
             }
         } finally {

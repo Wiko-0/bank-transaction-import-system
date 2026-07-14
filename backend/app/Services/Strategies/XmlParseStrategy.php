@@ -18,11 +18,11 @@ class XmlParseStrategy implements FileParseStrategy
         }
 
         try {
-            // Przesuwamy kursor do pierwszego tagu <transaction>
+            // Przesuwa kursor do pierwszego tagu <transaction>
             while ($reader->read() && $reader->localName !== 'transaction');
 
             while ($reader->localName === 'transaction') {
-                // Pobieramy całe wnętrze tagu jako ciąg XML
+                // Pobiera całe wnętrze tagu jako ciąg XML
                 $node = $reader->readOuterXml();
                 
                 $xmlElement = simplexml_load_string($node);
@@ -31,7 +31,7 @@ class XmlParseStrategy implements FileParseStrategy
                     yield json_decode(json_encode($xmlElement), true);
                 }
 
-                // Przeskakujemy do następnego węzła na tym samym poziomie (rodzeństwa)
+                // Przeskakuje do następnego węzła na tym samym poziomie
                 $reader->next('transaction');
             }
         } finally {
