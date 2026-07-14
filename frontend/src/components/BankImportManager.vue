@@ -3,7 +3,7 @@
     <h1 class="text-3xl font-black text-black mb-8 uppercase tracking-tight">Bank Transaction Import System</h1>
 
     <div class="bg-white p-6 border-2 border-black rounded-none mb-8">
-      <h2 class="text-xl font-bold mb-4 text-black uppercase">Upload New File-br6</h2>
+      <h2 class="text-xl font-bold mb-4 text-black uppercase">Upload New File-br7</h2>
       <div class="flex items-center gap-4">
         <input 
           type="file" 
@@ -15,11 +15,22 @@
         <button 
           @click="uploadFile" 
           :disabled="!selectedFile || isUploading"
-          class="px-5 py-2 bg-black text-white font-bold rounded-none hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors border border-black"
+          class="px-5 py-2 bg-black text-white font-bold rounded-none hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed transition-colors border border-black whitespace-nowrap"
         >
-          {{ isUploading ? 'IMPORTING...' : 'UPLOAD FILE' }}
+          {{ isUploading ? 'UPLOADING...' : 'UPLOAD FILE' }}
         </button>
       </div>
+
+      <div v-if="isUploading" class="mt-4 border-2 border-black p-3 bg-gray-50 font-mono text-xs">
+        <div class="flex justify-between font-bold mb-1">
+          <span>SENDING STREAM TO SERVER:</span>
+          <span>{{ uploadProgress }}%</span>
+        </div>
+        <div class="text-sm font-black tracking-widest text-black overflow-hidden whitespace-nowrap">
+          8<span class="text-gray-400">{{ '='.repeat(Math.floor(uploadProgress / 3)) }}</span>==&gt;
+        </div>
+      </div>
+
       <p v-if="uploadMessage" class="mt-3 text-sm font-bold text-black border-l-4 border-black pl-2">{{ uploadMessage }}</p>
     </div>
 
@@ -44,8 +55,8 @@
                 <span class="text-black">{{ importItem.total_records }}</span>
               </td>
               <td class="p-3 border-r border-black">
-                <span :class="getStatusClass(importItem.status)" class="px-2 py-0.5 border border-black text-xs font-bold uppercase">
-                  {{ importItem.status }}
+                <span :class="getStatusClass(importItem)" class="px-2 py-0.5 border border-black text-xs font-bold uppercase">
+                  {{ getStatusText(importItem) }}
                 </span>
               </td>
               <td class="p-3 text-right">
@@ -70,7 +81,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onBeforeUnmount } from 'vue';
 import axios from 'axios';
 import ErrorLogsPanel from './ErrorLogsPanel.vue';
 
@@ -79,13 +90,26 @@ const imports = ref([]);
 const selectedImport = ref(null);
 const selectedFile = ref(null);
 const isUploading = ref(false);
+const uploadProgress = ref(0);
 const uploadMessage = ref('');
 const fileInput = ref(null);
+let pollingInterval = null;
 
 const fetchImports = async () => {
   try {
     const response = await axios.get(`${API_URL}/imports?_=${Date.now()}`);
     imports.value = response.data;
+    
+    // Jeśli użytkownik ma otwarte szczegóły jakiegoś importu, aktualizujemy je z nowej listy
+    if (selectedImport.value) {
+      const updatedDetails = imports.value.find(item => item.id === selectedImport.value.id);
+      if (updatedDetails) {
+        // Zachowujemy też relację logs, jeśli przyszła w pełnym obiekcie z listy
+        selectedImport.value = updatedDetails;
+      }
+    }
+    
+    checkPollingRequirements();
   } catch (error) {
     console.error("Error fetching history:", error);
   }
@@ -107,6 +131,7 @@ const handleFileChange = (event) => {
 const uploadFile = async () => {
   if (!selectedFile.value) return;
   isUploading.value = true;
+  uploadProgress.value = 0;
   uploadMessage.value = '';
   
   const formData = new FormData();
@@ -114,13 +139,23 @@ const uploadFile = async () => {
 
   try {
     const response = await axios.post(`${API_URL}/imports`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        uploadProgress.value = percentCompleted;
+      }
     });
-    uploadMessage.value = "FILE IMPORTED.";
+    
+    uploadMessage.value = "FILE RECEIVED AND QUEUED.";
     selectedFile.value = null;
     if (fileInput.value) fileInput.value.value = ''; 
+    
+    // Pobiera historię
     await fetchImports(); 
-    await fetchImportDetails(response.data.id); 
+    // Od razu zaznaczy nowo dodany plik w panelu logów
+    await fetchImportDetails(response.data.id);
+    
+    startPolling(); 
   } catch (error) {
     console.error("Error uploading file:", error);
     uploadMessage.value = "IMPORT ERROR.";
@@ -129,8 +164,19 @@ const uploadFile = async () => {
   }
 };
 
-const getStatusClass = (status) => {
-  switch (status) {
+const getStatusText = (item) => {
+  if (item.status === 'failed' && item.total_records === 0) {
+    return 'IN QUEUE';
+  }
+  return item.status;
+};
+
+// kolor dla IN QUEUE niebieski
+const getStatusClass = (item) => {
+  if (item.status === 'failed' && item.total_records === 0) {
+    return 'bg-blue-100 text-blue-800 animate-pulse border-blue-400'; 
+  }
+  switch (item.status) {
     case 'success': return 'bg-green-100 text-green-800';
     case 'partial': return 'bg-yellow-100 text-yellow-800';
     case 'failed': return 'bg-red-100 text-red-800';
@@ -138,7 +184,34 @@ const getStatusClass = (status) => {
   }
 };
 
+const startPolling = () => {
+  if (pollingInterval) return;
+  pollingInterval = setInterval(async () => {
+    await fetchImports();
+  }, 2000); 
+};
+
+const stopPolling = () => {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+};
+
+const checkPollingRequirements = () => {
+  const hasPendingJobs = imports.value.some(item => item.status === 'failed' && item.total_records === 0);
+  if (hasPendingJobs) {
+    startPolling();
+  } else {
+    stopPolling();
+  }
+};
+
 onMounted(() => {
   fetchImports();
+});
+
+onBeforeUnmount(() => {
+  stopPolling();
 });
 </script>
