@@ -1,5 +1,5 @@
 <template>
-  <div class="mt-8 border-t-2 border-black pt-6 bg-white">
+  <BaseCard class="mt-8 border-t-2 border-l-0 border-r-0 border-b-0 pt-6 px-0 pb-0">
     <h2 class="text-xl font-bold mb-4 text-black uppercase">Error Logs & Validation</h2>
     
     <div v-if="selectedImport">
@@ -42,23 +42,21 @@
     <div v-else class="text-black italic text-sm">
       Select an import from the list above to view detailed error logs.
     </div>
-  </div>
+  </BaseCard>
 </template>
 
-<script setup>
-import { computed } from 'vue';
+<script setup lang="ts">
+import { toRef } from 'vue';
+import BaseCard from './ui/BaseCard.vue';
+import type { BankImport } from '../composable/useBankImports';
+import { useErrorLogs } from '../composable/useErrorLogs';
 
-const props = defineProps({
-  selectedImport: Object
-});
+const props = defineProps<{
+  selectedImport: BankImport | null;
+}>();
 
-//wyciąganie duplikatów z logów za pomocą Computed
-const duplicateIds = computed(() => {
-  if (!props.selectedImport || !props.selectedImport.logs) return [];
-  
-  return props.selectedImport.logs
-    .filter(log => log.error_message && log.error_message.toLowerCase().includes('duplicate'))
-    .map(log => log.transaction_id)
-    .filter((id, index, self) => id && self.indexOf(id) === index); // Usuwa powtórzenia na widoku
-});
+// konwertowanie właściwości props na reaktywną referencję aby Composable mógł na bieżąco reagować na zmiany jakiegoś pliku
+const selectedImportRef = toRef(props, 'selectedImport');
+
+const { duplicateIds } = useErrorLogs(selectedImportRef);
 </script>
